@@ -14,9 +14,13 @@ atf.mgcv.spline(
 )
 }
 \arguments{
-\item{formula}{A regression formula with a spline term}
+\item{formula}{A regression formula with a spline term:
+\itemize{
+\item "bs": non-penalized
+\item "s": penalized
+}}
 
-\item{dframe}{Data frame with output and exposure variable specified in formula}
+\item{dframe}{Data frame}
 
 \item{df.range}{The range of df parameter to be optimized}
 
@@ -27,12 +31,33 @@ atf.mgcv.spline(
 \item{debug}{Debug mode: prints debug information when set to TRUE (default=FALSE).}
 }
 \value{
-A list (Ljung Box pvalues, best spline regression fit)
+A list:
+\itemize{
+\item{"best.par"  : }{ Optimized parameter value}
+\item{"best.pval" : }{ Ljung-Box pvalue corresponding to best.par}
+\item{"box.pvals" : }{ Vector of p-values relative to the range of parameters}
+\item{"best.fit"  : }{ GAM regression object corresponding to the best.par}
+}
 }
 \description{
-Spline optimization through residual autocorrelation analysis
+Spline optimization by residual autocorrelation analysis
 }
 \examples{
+# Create a "iid + drift" signal
+N <- 1000; T1<- N/8; T2 <- N/8
+a1=2; a2=2
+drift <- a1*sin(2.0*pi*(1:N)/T1) - a2*cos(2*pi*(1:N)/T2)
+iid <- runif(n=N, min=-1.0, max=1.0)
+
+# Drift + iid noise
+y <- iid + drift
+mydf <- data.frame(y=y,x=1:N)
+
+# Add "covariates"
+mydf$cov1 <- sample(N); mydf$cov2 <- sample(N)
+
+# Run
+myfit.1 <-   atf.mgcv.spline(y ~ bs(x) + cov2, dframe=mydf, 500:500, DEBUG=TRUE)
 atf.mgcv.spline()
 }
 \keyword{atf.mgcv.spline}
