@@ -28,12 +28,15 @@ validate.formula <- function(form, DEBUG=FALSE){
     print(paste("valid=", valid))
   }
   
+  ss <- 0 # We support only unpenalized for the moment, so set
+          # this to 0 for the moment
+  
   # Issue error if formula is not valid
   if(bss == 0 & ss == 0){
-    print("Error: no spline terms found in formula")
+    print("Error: no 'bs' spline term found in formula.")
     valid <- FALSE
   }else if((bss != 0 & bss > 1) | (ss != 0 & ss > 1)){
-    print("Error: only 1 spline term is allowed in formula"); 
+    print("Error: only 1 'bs' spline term is allowed in formula."); 
     valid <- FALSE
   }else if(bss + ss > 1){
     print("Error: only 1 spline term is allowed in formula"); 
@@ -78,22 +81,18 @@ validate.formula <- function(form, DEBUG=FALSE){
 #' @title Autocorrelation Guided Spline Regression
 #'
 #' @description  Spline optimization by residual autocorrelation analysis
-#' @param formula  A regression formula with a spline term:
-#' \itemize{
-#' \item "bs": non-penalized
-#' \item "s": penalized
-#' }
-#' @param dframe   Data frame
+#' @param formula  A regression formula with an unpenalized "bs" spline term to be optimized
+#' @param data     Data frame
 #' @param df.range The range of df parameter to be optimized
 #' @param boxlag   The lag value for the Ljung Box test (default=20)
 #' @param spl.type The spline basis type: "cr" cubic, "tp" thin plate (default="cr")
 #' @param debug    Debug mode: prints debug information when set to TRUE (default=FALSE).
 #' @return A list:
 #' \itemize{
-#' \item{"best.par"  : }{ Optimized parameter value}
+#' \item{"best.par"  : }{ Optimized df value}
 #' \item{"best.pval" : }{ Ljung-Box pvalue corresponding to best.par}
+#' \item{"best.fit"  : }{ GAM regression object corresponding to the best.par}
 #' \item{"box.pvals" : }{ Vector of p-values relative to the range of parameters}
-#' \item{"best.fit"  : }{ GAM regression object corresponding to the best.par} 
 #' }
 #' @keywords atf.mgcv.spline
 #' @export
@@ -110,7 +109,7 @@ validate.formula <- function(form, DEBUG=FALSE){
 #' mydf$cov2 <- sample(N)
 #' 
 #' # Run atf.mgcv.spline
-#' fit <-   atf.mgcv.spline(y ~ bs(x) + cov1 + cov2, dframe=mydf, 3:100, DEBUG=TRUE)
+#' fit <-   atf.mgcv.spline(y ~ bs(x) + cov1 + cov2, data=mydf, 3:100, DEBUG=TRUE)
 #'
 #' # plot the "true" drift
 #' lines(drift, col="blue")
@@ -118,7 +117,7 @@ validate.formula <- function(form, DEBUG=FALSE){
 #' # Plot LB p-values
 #' plot(fit$box.pvals, type="l")
 ########################################################################
-atf.mgcv.spline <- function(formula, dframe, df.range, spl.type="cr", boxlag=20, DEBUG=FALSE){
+atf.mgcv.spline <- function(formula, data, df.range, spl.type="cr", boxlag=20, DEBUG=FALSE){
   
   # Print function call
   print(match.call())
@@ -135,10 +134,10 @@ atf.mgcv.spline <- function(formula, dframe, df.range, spl.type="cr", boxlag=20,
   expl.str <- fmla$fmla.expl
   
   # Sort data frame by expl. variable 
-  dframe <- dframe[order(dframe[[expl.str]]), ]
+  data <- data[order(data[[expl.str]]), ]
   
   # Extract explanatory variable  
-  expl <- dframe[[expl.str]] 
+  expl <- data[[expl.str]] 
   
   # Extract covariates
   covs <- ""
@@ -157,17 +156,14 @@ atf.mgcv.spline <- function(formula, dframe, df.range, spl.type="cr", boxlag=20,
     bs <- "bs='tp'"
   }
   
-  # Get the fx term (fx=TRUE for unpenalized spline)
+  # Set the fx term (fx=TRUE for unpenalized spline)
   fx <- TRUE
-  if(fmla$fmla.spl.type == "s.spline"){
-    fx <- FALSE
-  }
-  
-  
+
   # Loop through the dfs
   box.pvals <- c(); best.fit <- NULL; best.k <- c();
   resp <- c(); spl.term <- c()
   
+  first.k <- TRUE
   for(k in df.range){
     spl <- paste("s(", expl.str,", ",bs,", k=",k, ", fx=",fx,")" , covs, sep="")
     new.f <- paste(fmla$fmla.out, "~", spl, sep=" ")
@@ -177,21 +173,30 @@ atf.mgcv.spline <- function(formula, dframe, df.range, spl.type="cr", boxlag=20,
     }
     
     # Run the regression
-    fit <- mgcv::gam(as.formula(new.f), data=dframe)
+    fit <- mgcv::gam(as.formula(new.f), data=data)
   
     # Residuals    
     res <- residuals(fit)
     
     # Ljung-Box test of autocorrelations on the residuals 
     pvalue <- Box.test(res, lag=boxlag, type = "Ljung-Box")$p.value
-    box.pvals <- c(box.pvals,pvalue)
-    
-    # Is this the "best" fit?
-    if(max(box.pvals) == pvalue)
-    {
+
+    # Is this the best fit ?
+    if(first.k){
       best.fit <- fit
       best.k   <- k
+      first.k <- FALSE
+    }else{
+      # Decide if strictly ">" or ">=" 
+      if(pvalue >= max(box.pvals)){
+        best.fit <- fit
+        best.k   <- k
+        print(paste("Best k:", best.k))
+        print(paste("Best p:", pvalue))
+      }
     }
+    
+    box.pvals <- c(box.pvals,pvalue)
   }
   
   # Add names to vector of pvalues
@@ -199,10 +204,11 @@ atf.mgcv.spline <- function(formula, dframe, df.range, spl.type="cr", boxlag=20,
   
   if(DEBUG){
     print(paste("Best param:", best.k))
-    plot(expl, dframe[[fmla$fmla.out]], col="grey", xlab=expl.str, ylab=fmla$fmla.out)
+    plot(expl, data[[fmla$fmla.out]], col="grey", xlab=expl.str, ylab=fmla$fmla.out)
     lines(expl, best.fit$fitted.values, col="red")
   }
   
   if(max(box.pvals) < 0.05){warning("P-value relative to best df < 0.05")}
   return(list(best.par=best.k, best.pval=max(box.pvals), box.pvals=box.pvals, best.fit=best.fit))
 }
+

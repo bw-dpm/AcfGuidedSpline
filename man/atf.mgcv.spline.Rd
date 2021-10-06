@@ -6,7 +6,7 @@
 \usage{
 atf.mgcv.spline(
   formula,
-  dframe,
+  data,
   df.range,
   spl.type = "cr",
   boxlag = 20,
@@ -14,13 +14,9 @@ atf.mgcv.spline(
 )
 }
 \arguments{
-\item{formula}{A regression formula with a spline term:
-\itemize{
-\item "bs": non-penalized
-\item "s": penalized
-}}
+\item{formula}{A regression formula with an unpenalized "bs" spline term to be optimized}
 
-\item{dframe}{Data frame}
+\item{data}{Data frame}
 
 \item{df.range}{The range of df parameter to be optimized}
 
@@ -33,10 +29,10 @@ atf.mgcv.spline(
 \value{
 A list:
 \itemize{
-\item{"best.par"  : }{ Optimized parameter value}
+\item{"best.par"  : }{ Optimized df value}
 \item{"best.pval" : }{ Ljung-Box pvalue corresponding to best.par}
-\item{"box.pvals" : }{ Vector of p-values relative to the range of parameters}
 \item{"best.fit"  : }{ GAM regression object corresponding to the best.par}
+\item{"box.pvals" : }{ Vector of p-values relative to the range of parameters}
 }
 }
 \description{
@@ -55,7 +51,7 @@ mydf$cov1 <- sample(N)
 mydf$cov2 <- sample(N)
 
 # Run atf.mgcv.spline
-fit <-   atf.mgcv.spline(y ~ bs(x) + cov1 + cov2, dframe=mydf, 3:100, DEBUG=TRUE)
+fit <-   atf.mgcv.spline(y ~ bs(x) + cov1 + cov2, data=mydf, 3:100, DEBUG=TRUE)
 
 # plot the "true" drift
 lines(drift, col="blue")
